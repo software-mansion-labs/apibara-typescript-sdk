@@ -1,0 +1,7 @@
+{
+  "type": "minor",
+  "comment": "feat(starknet-rpc): add resilient transport and capability probing",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
