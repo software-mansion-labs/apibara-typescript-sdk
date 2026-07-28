@@ -1,0 +1,7 @@
+{
+  "type": "minor",
+  "comment": "feat(starknet-rpc): add filter and transform core",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
