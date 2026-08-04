@@ -1,0 +1,7 @@
+{
+  "type": "none",
+  "comment": "test(starknet-rpc): cover reorg and transport retry",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "none"
+}
