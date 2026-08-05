@@ -10,7 +10,11 @@
     },
     "test:ci": {
       "dependsOn": ["build"],
-      "env": ["TEST_EVM_RPC_URL", "TEST_EVM_SEPOLIA_RPC_URL"]
+      "env": [
+        "TEST_EVM_RPC_URL",
+        "TEST_EVM_SEPOLIA_RPC_URL",
+        "TEST_POSTGRES_CONNECTION_STRING"
+      ]
     },
     "typecheck": {
       "cache": false

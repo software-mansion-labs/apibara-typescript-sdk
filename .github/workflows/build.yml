@@ -48,5 +48,6 @@ jobs:
         env:
           TEST_EVM_RPC_URL: ${{ secrets.TEST_EVM_RPC_URL }}
           TEST_EVM_SEPOLIA_RPC_URL: ${{ secrets.TEST_EVM_SEPOLIA_RPC_URL }}
+          TEST_POSTGRES_CONNECTION_STRING: ${{ secrets.TEST_POSTGRES_CONNECTION_STRING }}
       - name: Check change files
         run: pnpm beachball check
