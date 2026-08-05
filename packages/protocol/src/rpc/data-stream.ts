@@ -322,6 +322,14 @@ async function* produceLiveBlocks<TFilter, TBlock>(
 
   const head = chainTracker.head();
 
+  // A reorg moves the head back to the common ancestor, which can be the block
+  // this stream last produced. There's nothing to fetch until the chain grows
+  // again: requesting `cursor + 1 .. head` would be an inverted range and the
+  // empty-head branch below would re-send an already processed block.
+  if (head.orderKey <= cursor.orderKey) {
+    return;
+  }
+
   const filterData = await config.fetchBlockRangeMany({
     startBlock: cursor.orderKey + 1n,
     maxBlock: requestedMaxBlock(state, head.orderKey),
