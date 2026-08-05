@@ -58,10 +58,10 @@ jobs:
       - name: Check change files
         run: pnpm beachball check
 
-  # Reorg/invalidate coverage for @apibara/starknet-rpc against a controllable
-  # node. Runs a local starknet-devnet in Docker (pinned; serves RPC spec
-  # 0.10.2) and points the reorg suite at it. The suite skips everywhere this
-  # URL is not set, so it only executes in this job.
+  # Deterministic reorg and WebSocket behavior coverage for
+  # @apibara/starknet-rpc against a controllable node. Runs a local
+  # starknet-devnet in Docker (pinned; serves RPC spec 0.10.2). The suites skip
+  # everywhere the devnet URLs are not set, so they only execute in this job.
   starknet-rpc-devnet-tests:
     runs-on: ubuntu-latest
     steps:
@@ -105,11 +105,16 @@ jobs:
         run: pnpm install --strict-peer-dependencies=false
       - name: Run build
         run: pnpm build
-      - name: Run devnet reorg tests
-        run: pnpm --filter @apibara/starknet-rpc exec vitest run tests/reorg.devnet.test.ts
+      - name: Run deterministic devnet tests
+        # Both suites reset/mutate the same node, so keep test files serial.
+        run: >-
+          pnpm --filter @apibara/starknet-rpc exec vitest run
+          tests/reorg.devnet.test.ts tests/websocket.devnet.test.ts
+          --no-file-parallelism
         env:
           # Local dockerized devnet from the step above — not a private endpoint.
           TEST_STARKNET_DEVNET_URL: http://127.0.0.1:5050/rpc
+          TEST_STARKNET_DEVNET_WS_URL: ws://127.0.0.1:5050/ws
       - name: Stop starknet-devnet
         if: always()
         run: |

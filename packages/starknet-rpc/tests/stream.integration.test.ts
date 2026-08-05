@@ -39,11 +39,37 @@ type EndpointCase = {
   name: LiveEndpointName;
   label: string;
   enhanced: boolean;
+  fixture: {
+    /** Starting cursor is exclusive; blocks through `end` are streamed. */
+    start: bigint;
+    end: bigint;
+    startHash: string;
+  };
 };
 
 const CASES: EndpointCase[] = [
-  { name: "testnet", label: "testnet v0.9", enhanced: false },
-  { name: "integration", label: "integration v0.10", enhanced: true },
+  {
+    name: "testnet",
+    label: "testnet v0.9",
+    enhanced: false,
+    fixture: {
+      start: 12_976_166n,
+      end: 12_976_174n,
+      startHash:
+        "0x0289f1bd0ce155a0c1bf5b436a66747ca6926bdfa1fa7dd8b8267ad96efb7a2c",
+    },
+  },
+  {
+    name: "integration",
+    label: "integration v0.10",
+    enhanced: true,
+    fixture: {
+      start: 14_245_205n,
+      end: 14_245_213n,
+      startHash:
+        "0x024df659e7f5545b842d80b56ad57639771d1fb6fa46075c09bf8e1ee104ae82",
+    },
+  },
 ];
 
 function createClient(url: string, extra?: Partial<StarknetRpcStreamOptions>) {
@@ -58,10 +84,8 @@ type DataResponse = Extract<Response, { _tag: "data" }>;
  * Streams a bounded, backfilling range for one filter and returns the `data`
  * messages up to and including block `end`.
  *
- * `endingCursor` only stops the loop once the cursor has *passed* it (a whole
- * fetch window can be emitted first, and the live phase runs to head), so the
- * range is bounded precisely by breaking on the first message reaching `end` —
- * exactly what a real consumer does.
+ * `endingCursor` bounds the network fetch. The explicit break also keeps this
+ * helper robust if a network implementation returns a whole fetch window.
  */
 async function streamRange(
   url: string,
@@ -116,76 +140,13 @@ async function streamRangeMany(
   return data;
 }
 
-/**
- * Opens a raw `starknet_subscribeNewHeads` subscription and resolves with the
- * first head's block number, then closes the socket. Validates the node-side
- * WebSocket subscription that {@link StarknetRpcStream} relies on for head
- * signalling and pending finality.
- */
-function firstNewHead(wsUrl: string, timeoutMs = 20_000): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(wsUrl);
-    const settle = (fn: () => void) => {
-      clearTimeout(timer);
-      try {
-        socket.close();
-      } catch {}
-      fn();
-    };
-    const timer = setTimeout(
-      () => settle(() => reject(new Error("no newHeads notification in time"))),
-      timeoutMs,
-    );
-    socket.onopen = () => {
-      socket.send(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "starknet_subscribeNewHeads",
-          params: [],
-        }),
-      );
-    };
-    socket.onmessage = (event) => {
-      let message: {
-        params?: { result?: { block_number?: number } };
-      };
-      try {
-        message = JSON.parse(String(event.data));
-      } catch {
-        return;
-      }
-      const blockNumber = message.params?.result?.block_number;
-      if (typeof blockNumber === "number") {
-        settle(() => resolve(blockNumber));
-      }
-    };
-    socket.onerror = () =>
-      settle(() => reject(new Error("WebSocket upgrade/connection failed")));
-  });
-}
-
-/** Reaches into the private WS signal to close it after a test (no leak). */
-function closeStreamSocket(stream: StarknetRpcStream): void {
-  (
-    stream as unknown as { websocketSignal?: { close(): void } }
-  ).websocketSignal?.close();
-}
-
-for (const { name, label, enhanced } of CASES) {
+for (const { name, label, enhanced, fixture } of CASES) {
   const endpoint = getLiveEndpoint(name);
 
   describe.skipIf(!endpoint)(`Starknet RPC live stream — ${label}`, () => {
     // Vitest evaluates skipped suite callbacks while registering their tests.
     const url = endpoint?.httpUrl ?? "";
     const wsUrl = endpoint?.wsUrl;
-
-    async function head(): Promise<bigint> {
-      const status = await createClient(url).status();
-      const orderKey = status.currentHead?.orderKey;
-      if (orderKey === undefined) throw new Error("no head cursor");
-      return orderKey;
-    }
 
     it("reports a consistent head/finalized status", async () => {
       const status = await createClient(url).status();
@@ -199,9 +160,7 @@ for (const { name, label, enhanced } of CASES) {
     }, 30_000);
 
     it("backfills headers with contiguous, hash-linked cursors", async () => {
-      const tip = await head();
-      const start = tip - 8n;
-      const end = tip - 3n; // stay away from the reorg-prone tip
+      const { start, end, startHash } = fixture;
       const data = await streamRange(url, { header: "always" }, start, end);
 
       expect(data.length).toBeGreaterThanOrEqual(3);
@@ -212,7 +171,9 @@ for (const { name, label, enhanced } of CASES) {
         const { cursor, endCursor, finality, data: blocks } = message.data;
         const block = blocks[0];
         expect(block).not.toBeNull();
-        expect(finality).toBe("accepted");
+        // These committed fixtures are below the L1-accepted cursor, so their
+        // finality is stable and cannot change while the test is running.
+        expect(finality).toBe("finalized");
 
         // Cursor arithmetic: one block per message, strictly ascending.
         expect(endCursor?.orderKey).toBe(expectedNumber);
@@ -228,6 +189,11 @@ for (const { name, label, enhanced } of CASES) {
         if (previousEnd) {
           expect(cursor?.uniqueKey).toBe(previousEnd.uniqueKey);
           expect(block!.header.parentBlockHash).toBe(previousEnd.uniqueKey);
+        } else {
+          // The first parent anchors the committed fixture to the expected
+          // chain instead of silently testing a similarly-numbered fork.
+          expect(cursor?.uniqueKey).toBe(startHash);
+          expect(block!.header.parentBlockHash).toBe(startHash);
         }
 
         previousEnd = endCursor;
@@ -237,12 +203,11 @@ for (const { name, label, enhanced } of CASES) {
     }, 60_000);
 
     it("streams events with well-formed structure", async () => {
-      const tip = await head();
       const data = await streamRange(
         url,
         { header: "on_data", events: [{}] },
-        tip - 40n,
-        tip - 3n,
+        fixture.start,
+        fixture.end,
       );
 
       const matched = data.filter(
@@ -265,14 +230,18 @@ for (const { name, label, enhanced } of CASES) {
     }, 60_000);
 
     it("aligns multi-filter results positionally", async () => {
-      const tip = await head();
       // filter[0] always emits a header-only block; filter[1] only emits when
       // the block has events. The projections must stay independent per filter.
       const filters: Filter[] = [
         { header: "always" },
         { header: "on_data", events: [{}] },
       ];
-      const data = await streamRangeMany(url, filters, tip - 20n, tip - 3n);
+      const data = await streamRangeMany(
+        url,
+        filters,
+        fixture.start,
+        fixture.end,
+      );
       expect(data.length).toBeGreaterThanOrEqual(3);
 
       let matchedSecond = 0;
@@ -300,9 +269,7 @@ for (const { name, label, enhanced } of CASES) {
     it.runIf(enhanced)(
       "filters events by contract address",
       async () => {
-        const tip = await head();
-        const start = tip - 40n;
-        const end = tip - 3n;
+        const { start, end } = fixture;
 
         // Discover a contract that actually emits in this range…
         const wildcard = await streamRange(
@@ -336,12 +303,11 @@ for (const { name, label, enhanced } of CASES) {
     it.runIf(enhanced)(
       "streams state updates (storage diffs)",
       async () => {
-        const tip = await head();
         const data = await streamRange(
           url,
           { header: "always", storageDiffs: [{}] },
-          tip - 6n,
-          tip - 2n,
+          fixture.start,
+          fixture.end,
         );
         const withDiffs = data.filter(
           (m) => (m.data.data[0]?.storageDiffs.length ?? 0) > 0,
@@ -359,7 +325,6 @@ for (const { name, label, enhanced } of CASES) {
     it.runIf(enhanced)(
       "attaches transaction traces when requested",
       async () => {
-        const tip = await head();
         const data = await streamRange(
           url,
           {
@@ -368,8 +333,8 @@ for (const { name, label, enhanced } of CASES) {
               { includeTransaction: true, includeTransactionTrace: true },
             ],
           },
-          tip - 6n,
-          tip - 2n,
+          fixture.start,
+          fixture.end,
         );
         const traced = data.filter(
           (m) => (m.data.data[0]?.traces.length ?? 0) > 0,
@@ -394,9 +359,7 @@ for (const { name, label, enhanced } of CASES) {
     it.runIf(enhanced)(
       "produces identical cursors with JSON-RPC batching enabled",
       async () => {
-        const tip = await head();
-        const start = tip - 8n;
-        const end = tip - 3n;
+        const { start, end } = fixture;
         const filter: Filter = { header: "always" };
 
         const [plain, batched] = await Promise.all([
@@ -424,53 +387,6 @@ for (const { name, label, enhanced } of CASES) {
         );
         expect(deployment.webSocket).toBe(true);
       }, 30_000);
-
-      it("delivers newHeads subscription notifications", async () => {
-        const tip = await head();
-        const blockNumber = await firstNewHead(wsUrl!);
-        expect(blockNumber).toBeGreaterThan(0);
-        // A live head, not a stale replay: at or just behind the current tip.
-        expect(blockNumber).toBeGreaterThanOrEqual(Number(tip) - 2);
-      }, 30_000);
-
-      it.runIf(enhanced)(
-        "streams pending finality over the WebSocket signal",
-        async () => {
-          const tip = await head();
-          const stream = new StarknetRpcStream({ url, wsUrl, ...BASE_OPTIONS });
-          const client = new RpcClient<Filter, StarknetRpcBlock>(stream);
-          const controller = new AbortController();
-          const stop = setTimeout(() => controller.abort(), 45_000);
-
-          let pendingSeen = false;
-          try {
-            const request: StreamDataRequest<Filter> = {
-              finality: "pending",
-              filter: [{ header: "always" }],
-              startingCursor: { orderKey: tip - 2n },
-            };
-            for await (const message of client.streamData(request, {
-              signal: controller.signal,
-            })) {
-              if (
-                message._tag === "data" &&
-                message.data.finality === "pending"
-              ) {
-                // Pending cursors are ephemeral: an orderKey with no block hash.
-                expect(message.data.endCursor?.uniqueKey).toBeUndefined();
-                pendingSeen = true;
-                break;
-              }
-            }
-          } finally {
-            clearTimeout(stop);
-            controller.abort();
-            closeStreamSocket(stream);
-          }
-          expect(pendingSeen).toBe(true);
-        },
-        60_000,
-      );
     });
   });
 }

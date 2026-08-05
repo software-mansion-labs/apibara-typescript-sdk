@@ -516,7 +516,7 @@ export class StarknetRpcStream extends RpcStreamConfig<
     try {
       raw = await this.request<RpcBlockWithReceipts>(
         "starknet_getBlockWithReceipts",
-        ["pre_confirmed"],
+        ["pre_confirmed", []],
       );
     } catch (error) {
       if (isBlockNotFound(error)) return null;
@@ -532,7 +532,7 @@ export class StarknetRpcStream extends RpcStreamConfig<
       // Confirm the identity once and retry on the next notification if it did.
       const confirmation = await this.request<RpcBlockWithReceipts>(
         "starknet_getBlockWithReceipts",
-        ["pre_confirmed"],
+        ["pre_confirmed", []],
       );
       if (pendingIdentity(raw) !== pendingIdentity(confirmation)) {
         raw = confirmation;
