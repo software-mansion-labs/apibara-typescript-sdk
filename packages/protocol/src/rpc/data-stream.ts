@@ -245,7 +245,7 @@ async function* backfillFinalizedBlocks<TFilter, TBlock>(
 
   const filterData = await config.fetchBlockRangeMany({
     startBlock: cursor.orderKey + 1n,
-    maxBlock: finalized.orderKey,
+    maxBlock: requestedMaxBlock(state, finalized.orderKey),
     force,
     clampAllowed: true,
     filters,
@@ -324,7 +324,7 @@ async function* produceLiveBlocks<TFilter, TBlock>(
 
   const filterData = await config.fetchBlockRangeMany({
     startBlock: cursor.orderKey + 1n,
-    maxBlock: head.orderKey,
+    maxBlock: requestedMaxBlock(state, head.orderKey),
     force: false,
     clampAllowed: false,
     filters,
@@ -540,6 +540,17 @@ function shouldContinue(state: State<unknown, unknown>): boolean {
   if (endingCursor === undefined) return true;
 
   return state.cursor.orderKey < endingCursor.orderKey;
+}
+
+/** Bound each network fetch as well as the outer stream loop. */
+function requestedMaxBlock(
+  state: State<unknown, unknown>,
+  availableMaxBlock: bigint,
+): bigint {
+  const endingBlock = state.options?.endingCursor?.orderKey;
+  return endingBlock !== undefined && endingBlock < availableMaxBlock
+    ? endingBlock
+    : availableMaxBlock;
 }
 
 function shouldRefreshFinalized(state: State<unknown, unknown>): boolean {

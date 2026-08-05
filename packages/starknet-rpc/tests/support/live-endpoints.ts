@@ -93,3 +93,22 @@ export function getDevnetUrl(): string | undefined {
     clean(process.env.TEST_STARKNET_DEVNET_URL) ?? clean(readLocalFile().devnet)
   );
 }
+
+/**
+ * WebSocket URL of the locally-run starknet-devnet. The explicit environment
+ * variable wins; otherwise derive devnet's `/ws` endpoint from its HTTP
+ * `/rpc` URL for convenient local runs.
+ */
+export function getDevnetWsUrl(): string | undefined {
+  const configured = clean(process.env.TEST_STARKNET_DEVNET_WS_URL);
+  if (configured) return configured;
+
+  const httpUrl = getDevnetUrl();
+  if (!httpUrl) return undefined;
+  const url = new URL(httpUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  if (url.pathname.endsWith("/rpc")) {
+    url.pathname = `${url.pathname.slice(0, -4)}/ws`;
+  }
+  return url.toString();
+}
