@@ -175,11 +175,20 @@ export abstract class RpcStreamConfig<TFilter, TBlock> {
       };
     }
 
-    const startBlock = results.reduce(
-      (value, result) =>
-        result.startBlock > value ? result.startBlock : value,
-      results[0].startBlock,
-    );
+    // The stream driver only ever re-fetches the suffix after `endBlock`, so a
+    // result starting after the requested block would create a permanent gap.
+    // Reject it instead of silently dropping blocks.
+    for (const result of results) {
+      if (result.startBlock > args.startBlock) {
+        throw new Error(
+          `fetchBlockRange must cover the requested start block: requested ${args.startBlock}, got ${result.startBlock}`,
+        );
+      }
+    }
+    const startBlock = args.startBlock;
+    // Filters may cover ranges of different lengths (e.g. per-filter clamping).
+    // Only the prefix covered by *all* filters can be emitted; the caller
+    // re-fetches everything after `endBlock` on the next iteration.
     const endBlock = results.reduce(
       (value, result) => (result.endBlock < value ? result.endBlock : value),
       results[0].endBlock,
