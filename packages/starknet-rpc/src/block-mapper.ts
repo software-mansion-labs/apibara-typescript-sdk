@@ -9,6 +9,11 @@ import type { Filter } from "@apibara/starknet";
 import type { StarknetRpcBlock } from "./block";
 import { CompiledFilter } from "./filter-rules";
 
+/**
+ * Whether a block is mapped while following the chain tip or while catching up
+ * on history. A header filter set to `on_data_or_on_new_block` produces an
+ * otherwise empty block only in the former case.
+ */
 export type BlockProduction = "backfill" | "live";
 
 /**
