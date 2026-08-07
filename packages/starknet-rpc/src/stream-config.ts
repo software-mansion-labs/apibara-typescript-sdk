@@ -20,7 +20,7 @@ import { type Filter, mergeFilter } from "@apibara/starknet";
 import { metrics } from "@opentelemetry/api";
 import { satisfies } from "semver";
 import type { StarknetRpcBlock } from "./block";
-import type { BlockMapper } from "./block-mapper";
+import type { BlockMapper, BlockProduction } from "./block-mapper";
 import { StarknetJsonRpcClient } from "./client";
 import { StarknetEndpointCapabilities } from "./endpoint-capabilities";
 import {
@@ -118,6 +118,10 @@ export class StarknetRpcStream extends RpcStreamConfig<
   private readonly cacheOrder = new Map<bigint, true>();
   private websocketSignal?: StarknetWebSocketSignal;
   private pendingLoaded = false;
+  // Highest block number seen from a `latest` cursor fetch. The stream driver
+  // refreshes the head before asking for a range, so this is the same head that
+  // bounds the range being requested.
+  private latestBlockNumber?: bigint;
   private readonly rpcMapper = new StarknetRpcMapper();
 
   constructor(private readonly options: StarknetRpcStreamOptions) {
@@ -279,7 +283,13 @@ export class StarknetRpcStream extends RpcStreamConfig<
       if (isBlockNotFound(error)) return null;
       throw error;
     }
-    return this.rememberBlock(block);
+    const info = this.rememberBlock(block);
+    if (args.blockTag === "latest") {
+      // A reorg can move the head backwards, so track it rather than keeping
+      // the maximum ever seen.
+      this.latestBlockNumber = info.blockNumber;
+    }
+    return info;
   }
 
   async fetchCursorRange({
@@ -546,7 +556,8 @@ export class StarknetRpcStream extends RpcStreamConfig<
       traces: [],
       ...state,
     };
-    const mapped = filterSet.createBlockMapper().map(block);
+    // A pre-confirmed block only exists at the chain tip.
+    const mapped = filterSet.createBlockMapper().map(block, "live");
     this.pendingLoaded = true;
     const number =
       typeof raw.block_number === "number"
@@ -600,7 +611,8 @@ export class StarknetRpcStream extends RpcStreamConfig<
       );
       base = { ...base, ...state };
     }
-    let blocks = blockMapper.map(base);
+    const production = this.blockProduction(number);
+    let blocks = blockMapper.map(base, production);
     if (
       plan.fetchTraces &&
       blocks.some((block, index) => traceRequirements[index] && block !== null)
@@ -619,7 +631,7 @@ export class StarknetRpcStream extends RpcStreamConfig<
           base.messages,
         ),
       };
-      blocks = blockMapper.map(base);
+      blocks = blockMapper.map(base, production);
     }
     return {
       header: base.header,
@@ -839,6 +851,22 @@ export class StarknetRpcStream extends RpcStreamConfig<
     this.stateCache.set(number, { addressKey, update: raw });
     this.touchCacheBlock(number);
     return raw;
+  }
+
+  /**
+   * A block is produced live when it is the chain tip the driver last observed.
+   * Anything below that is history the stream is still catching up on, whether
+   * it comes from the finalized backfill or from the non-finalized backlog.
+   *
+   * Without a known head — no `latest` cursor has been fetched yet — treat the
+   * block as backfilled: that is what every header policy except
+   * `on_data_or_on_new_block` produces anyway.
+   */
+  private blockProduction(number: bigint): BlockProduction {
+    return this.latestBlockNumber !== undefined &&
+      number >= this.latestBlockNumber
+      ? "live"
+      : "backfill";
   }
 
   private rememberBlock(block: RpcBlock): BlockInfo {
