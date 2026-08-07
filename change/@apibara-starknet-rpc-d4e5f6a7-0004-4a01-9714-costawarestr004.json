@@ -1,0 +1,7 @@
+{
+  "type": "minor",
+  "comment": "feat(starknet-rpc): add cost-aware RPC stream",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
