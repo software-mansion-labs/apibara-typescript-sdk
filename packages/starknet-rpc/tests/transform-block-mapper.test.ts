@@ -411,7 +411,7 @@ describe("RPC transforms and block mapping", () => {
     const [projected] = new FilterSet()
       .add(filter)
       .createBlockMapper()
-      .map(completeBlock());
+      .map(completeBlock(), "backfill");
     expect(projected).not.toBeNull();
     if (!projected) throw new Error("Expected filter to match the block");
     expect(projected.transactions).toHaveLength(1);
@@ -470,7 +470,7 @@ describe("RPC transforms and block mapping", () => {
         ],
       })
       .createBlockMapper()
-      .map({ ...block, traces });
+      .map({ ...block, traces }, "backfill");
     expect(projected?.traces[0].filterIds).toEqual([50]);
   });
 
@@ -485,14 +485,42 @@ describe("RPC transforms and block mapping", () => {
     filters.add({ header: "always" });
     const secondMapper = filters.createBlockMapper();
 
-    expect(firstMapper.map(completeBlock())).toEqual([null]);
-    const mapped = secondMapper.map(completeBlock());
+    expect(firstMapper.map(completeBlock(), "backfill")).toEqual([null]);
+    const mapped = secondMapper.map(completeBlock(), "backfill");
     expect(mapped).toHaveLength(2);
     expect(mapped[0]).toBeNull();
     expect(mapped[1]).toMatchObject({
       events: [],
       transactions: [],
     });
+  });
+
+  it("includes unmatched headers according to production mode", () => {
+    const mapper = new FilterSet()
+      .add({
+        header: "on_data",
+        events: [{ address: "0xffff" }],
+      })
+      .add({
+        header: "on_data_or_on_new_block",
+        events: [{ address: "0xffff" }],
+      })
+      .add({
+        header: "always",
+        events: [{ address: "0xffff" }],
+      })
+      .createBlockMapper();
+    const block = completeBlock();
+
+    const backfill = mapper.map(block, "backfill");
+    expect(backfill[0]).toBeNull();
+    expect(backfill[1]).toBeNull();
+    expect(backfill[2]?.header).toEqual(block.header);
+
+    const live = mapper.map(block, "live");
+    expect(live[0]).toBeNull();
+    expect(live[1]?.header).toEqual(block.header);
+    expect(live[2]?.header).toEqual(block.header);
   });
 });
 

@@ -9,6 +9,8 @@ import type { Filter } from "@apibara/starknet";
 import type { StarknetRpcBlock } from "./block";
 import { CompiledFilter } from "./filter-rules";
 
+export type BlockProduction = "backfill" | "live";
+
 /**
  * Projects a complete block independently for every top-level filter.
  *
@@ -37,7 +39,10 @@ export class BlockMapper {
     this.#filters = filters.map((filter) => new CompiledFilter(filter));
   }
 
-  map(block: StarknetRpcBlock): readonly (StarknetRpcBlock | null)[] {
-    return this.#filters.map((filter) => filter.map(block));
+  map(
+    block: StarknetRpcBlock,
+    production: BlockProduction,
+  ): readonly (StarknetRpcBlock | null)[] {
+    return this.#filters.map((filter) => filter.map(block, production));
   }
 }

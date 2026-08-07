@@ -20,6 +20,7 @@ import type {
   TransactionStatusFilter,
 } from "@apibara/starknet";
 import type { StarknetRpcBlock } from "./block";
+import type { BlockProduction } from "./block-mapper";
 import { BlockSelection } from "./block-selection";
 import { normalizeFelt } from "./felt";
 
@@ -72,10 +73,13 @@ export class CompiledFilter {
     ];
   }
 
-  map(block: StarknetRpcBlock): StarknetRpcBlock | null {
+  map(
+    block: StarknetRpcBlock,
+    production: BlockProduction,
+  ): StarknetRpcBlock | null {
     const selection = new BlockSelection(block);
     for (const rule of this.#rules) rule.apply(block, selection);
-    return selection.toBlock(this.#header);
+    return selection.toBlock(this.#header, production);
   }
 }
 
