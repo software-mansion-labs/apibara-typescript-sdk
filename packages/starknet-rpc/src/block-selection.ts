@@ -17,6 +17,7 @@ import type {
   TransactionTrace,
 } from "@apibara/starknet";
 import type { StarknetRpcBlock, StarknetRpcTransactionReceipt } from "./block";
+import type { BlockProduction } from "./block-mapper";
 
 /**
  * Accumulates one CompiledFilter's sparse block result.
@@ -135,8 +136,14 @@ export class BlockSelection {
     if (trace) this.#traces.select(transactionIndex, trace, filterId);
   }
 
-  toBlock(header: HeaderFilter | undefined): StarknetRpcBlock | null {
-    if (!this.#hasData() && header !== "always") return null;
+  toBlock(
+    header: HeaderFilter | undefined,
+    production: BlockProduction,
+  ): StarknetRpcBlock | null {
+    const includeEmptyHeader =
+      header === "always" ||
+      (header === "on_data_or_on_new_block" && production === "live");
+    if (!this.#hasData() && !includeEmptyHeader) return null;
     return {
       header: this.#block.header,
       transactions: this.#transactions.values,

@@ -3,7 +3,7 @@ export {
   StarknetRpcError,
   UnsupportedStarknetRpcVersionError,
 } from "./errors";
-export type { BlockMapper } from "./block-mapper";
+export type { BlockMapper, BlockProduction } from "./block-mapper";
 export type { FetchPlan } from "./fetch-plan";
 export { FilterSet } from "./filter";
 export type {
