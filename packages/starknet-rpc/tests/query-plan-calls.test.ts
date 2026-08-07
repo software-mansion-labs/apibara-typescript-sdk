@@ -515,6 +515,67 @@ describe("query-plan call counts", () => {
     expect(disabledCaches.receiptCache.size).toBe(0);
     expect(disabledCaches.cacheOrder.size).toBe(0);
   });
+
+  it("produces on_data_or_on_new_block headers only at the chain tip", async () => {
+    // One filter matches events at block 6, so that block is fetched. The
+    // second filter matches nothing there: whether it still receives the empty
+    // header is what the block's production mode decides.
+    const filters: Filter[] = [
+      { events: [{ address: "0xabc", keys: ["0x1"] }] },
+      { header: "on_data_or_on_new_block" },
+    ];
+
+    const streamWithHead = (head: number) =>
+      configuredStream(async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as {
+          id: number;
+          method: string;
+          params: [string | { block_number?: number }];
+        };
+        if (request.method === "starknet_getEvents") {
+          return Response.json({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: { events: [{ block_number: 6 }] },
+          });
+        }
+        const blockId = request.params[0];
+        // Starknet encodes the `latest` tag as a bare string, not an object.
+        const number =
+          typeof blockId === "string" ? head : blockId.block_number;
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: receiptBlock(number ?? head),
+        });
+      });
+
+    const headerAtHead = async (head: number) => {
+      const stream = streamWithHead(head);
+      // The stream driver refreshes the head before requesting a range; that is
+      // how the config learns where the tip is.
+      await stream.fetchCursor({ blockTag: "latest" });
+      const result = await stream.fetchBlockRangeMany({
+        startBlock: 5n,
+        maxBlock: 6n,
+        force: false,
+        clampAllowed: true,
+        filters,
+      });
+      const block6 = result.data.find((item) => item.endCursor.orderKey === 6n);
+      expect(block6?.blocks[0]).not.toBeNull();
+      return block6?.blocks[1] ?? null;
+    };
+
+    // Block 6 is the head: the second filter receives an empty header.
+    expect(await headerAtHead(6)).toMatchObject({
+      header: { blockNumber: 6n },
+      events: [],
+    });
+
+    // The chain has moved on, so block 6 is history and the filter is dropped.
+    expect(await headerAtHead(100)).toBeNull();
+  });
 });
 
 function configuredStream(
