@@ -120,6 +120,31 @@ class PendingConfig extends MultiFilterConfig {
 }
 
 describe("RpcDataStream", () => {
+  it("bounds network fetches by the ending cursor", async () => {
+    const config = new MultiFilterConfig();
+    config.headBlock = 100n;
+    const iterator = new RpcClient(config)
+      .streamData(
+        {
+          finality: "accepted",
+          filter: ["matched"],
+          startingCursor: { orderKey: 1n },
+        },
+        { endingCursor: { orderKey: 3n } },
+      )
+      [Symbol.asyncIterator]();
+
+    try {
+      await iterator.next();
+      expect(config.fetchBlockRangeCalls[0]).toMatchObject({
+        startBlock: 2n,
+        maxBlock: 3n,
+      });
+    } finally {
+      await iterator.return?.();
+    }
+  });
+
   it("keeps response blocks aligned with multiple requested filters", async () => {
     const config = new MultiFilterConfig();
     const client = new RpcClient(config);
