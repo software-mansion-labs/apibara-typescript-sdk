@@ -1,0 +1,7 @@
+{
+  "type": "minor",
+  "comment": "feat(protocol): support multi-filter RPC finality",
+  "packageName": "@apibara/protocol",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
