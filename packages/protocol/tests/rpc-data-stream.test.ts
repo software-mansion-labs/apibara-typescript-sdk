@@ -18,6 +18,7 @@ type TestBlock = {
 
 class EmptyLiveHeadConfig extends RpcStreamConfig<string, TestBlock> {
   fetchBlockRangeCalls: FetchBlockRangeArgs<string>[] = [];
+  fetchHeaderByHashCalls: Bytes[] = [];
   headBlock = 2n;
 
   headRefreshIntervalMs(): number {
@@ -79,6 +80,7 @@ class EmptyLiveHeadConfig extends RpcStreamConfig<string, TestBlock> {
   async fetchHeaderByHash({
     blockHash,
   }: FetchBlockByHashArgs<string>): Promise<FetchBlockByHashResult<TestBlock>> {
+    this.fetchHeaderByHashCalls.push(blockHash);
     const blockNumber = blockNumberFromHash(blockHash);
     const info = blockInfo(blockNumber);
 
@@ -145,6 +147,23 @@ describe("RpcDataStream", () => {
     } finally {
       await iterator.return?.();
     }
+  });
+
+  it("fetches an empty live header once for multiple filters", async () => {
+    const config = new EmptyLiveHeadConfig();
+    const hash = blockHash(2n);
+
+    const result = await config.fetchHeaderByHashMany({
+      blockHash: hash,
+      filters: ["first", "second", "third"],
+    });
+
+    expect(config.fetchHeaderByHashCalls).toEqual([hash]);
+    expect(result.data.blocks).toEqual([
+      { blockNumber: 2n },
+      { blockNumber: 2n },
+      { blockNumber: 2n },
+    ]);
   });
 
   it("rejects pending finality unless the config explicitly supports it", async () => {

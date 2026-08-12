@@ -239,19 +239,18 @@ export abstract class RpcStreamConfig<TFilter, TBlock> {
   async fetchHeaderByHashMany(
     args: FetchHeaderByHashManyArgs<TFilter>,
   ): Promise<FetchHeaderByHashManyResult<TBlock>> {
-    const results = await Promise.all(
-      args.filters.map(() => this.fetchHeaderByHash(args)),
-    );
-    const first = results[0];
-    if (!first) {
+    const { filters, ...fetchArgs } = args;
+    if (filters.length === 0) {
       throw new Error("Cannot fetch a header for an empty filter list");
     }
+
+    const result = await this.fetchHeaderByHash(fetchArgs);
     return {
-      blockInfo: first.blockInfo,
+      blockInfo: result.blockInfo,
       data: {
-        cursor: first.data.cursor,
-        endCursor: first.data.endCursor,
-        blocks: results.map((result) => result.data.block),
+        cursor: result.data.cursor,
+        endCursor: result.data.endCursor,
+        blocks: filters.map(() => result.data.block),
       },
     };
   }
