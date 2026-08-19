@@ -150,6 +150,131 @@ describe("query-plan call counts", () => {
     expect(result.data[0].blocks[1]).toBeNull();
   });
 
+  it("pushes a safe event-key superset into discovery queries", async () => {
+    const eventQueries: Record<string, unknown>[] = [];
+    const stream = configuredStream(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params: [Record<string, unknown>];
+      };
+      if (request.method === "starknet_getEvents") {
+        eventQueries.push(request.params[0]);
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { events: [] },
+        });
+      }
+      throw new Error(`Unexpected method ${request.method}`);
+    });
+
+    await stream.fetchBlockRangeMany({
+      startBlock: 5n,
+      maxBlock: 100n,
+      force: false,
+      clampAllowed: true,
+      filters: [
+        {
+          events: [
+            { address: "0xabc", keys: ["0x01", null, "0x03"] },
+            { address: "0xabc", keys: ["0x02", "0x04", "0x05"] },
+            { address: "0xdef", keys: ["0x06", "0x07", "0x08"] },
+            { address: "0xdef", keys: ["0x09"] },
+          ],
+        },
+      ],
+    });
+
+    expect(eventQueries).toEqual([
+      expect.objectContaining({
+        address: "0xabc",
+        keys: [["0x1", "0x2"], [], ["0x3", "0x5"]],
+      }),
+      expect.objectContaining({
+        address: "0xdef",
+        keys: [["0x6", "0x9"]],
+      }),
+    ]);
+  });
+
+  it("omits key pushdown when any matching filter has no key prefix", async () => {
+    const eventQueries: Record<string, unknown>[] = [];
+    const stream = configuredStream(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params: [Record<string, unknown>];
+      };
+      if (request.method === "starknet_getEvents") {
+        eventQueries.push(request.params[0]);
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { events: [] },
+        });
+      }
+      throw new Error(`Unexpected method ${request.method}`);
+    });
+
+    await stream.fetchBlockRangeMany({
+      startBlock: 5n,
+      maxBlock: 100n,
+      force: false,
+      clampAllowed: true,
+      filters: [
+        {
+          events: [{ address: "0xabc", keys: ["0x1"] }, { address: "0xabc" }],
+        },
+      ],
+    });
+
+    expect(eventQueries).toHaveLength(1);
+    expect(eventQueries[0]).not.toHaveProperty("keys");
+  });
+
+  it("pushes a safe key union into merged multi-address discovery", async () => {
+    const eventQueries: Record<string, unknown>[] = [];
+    const stream = configuredStream(async (_input, init) => {
+      const request = JSON.parse(String(init?.body)) as {
+        id: number;
+        method: string;
+        params: [Record<string, unknown>];
+      };
+      if (request.method === "starknet_getEvents") {
+        eventQueries.push(request.params[0]);
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { events: [] },
+        });
+      }
+      throw new Error(`Unexpected method ${request.method}`);
+    }, addressFiltering);
+
+    await stream.fetchBlockRangeMany({
+      startBlock: 5n,
+      maxBlock: 100n,
+      force: false,
+      clampAllowed: false,
+      filters: [
+        {
+          events: [
+            { address: "0xabc", keys: ["0x1"] },
+            { address: "0xdef", keys: ["0x2"] },
+          ],
+        },
+      ],
+    });
+
+    expect(eventQueries).toEqual([
+      expect.objectContaining({
+        address: ["0xabc", "0xdef"],
+        keys: [["0x1", "0x2"]],
+      }),
+    ]);
+  });
+
   it("exhausts event pages without clamping the requested block range", async () => {
     const eventQueries: Record<string, unknown>[] = [];
     const stream = configuredStream(async (_input, init) => {
@@ -192,6 +317,7 @@ describe("query-plan call counts", () => {
         to_block: { block_number: 50_000 },
         chunk_size: 1_000,
         address: "0xabc",
+        keys: [["0x1"]],
       },
       {
         from_block: { block_number: 5 },
@@ -199,6 +325,7 @@ describe("query-plan call counts", () => {
         chunk_size: 1_000,
         continuation_token: "next-page",
         address: "0xabc",
+        keys: [["0x1"]],
       },
     ]);
     expect(result.data).toHaveLength(2);
