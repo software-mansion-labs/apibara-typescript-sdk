@@ -1,0 +1,7 @@
+{
+  "type": "patch",
+  "comment": "fix(starknet): share the application protocol runtime",
+  "packageName": "@apibara/starknet",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}

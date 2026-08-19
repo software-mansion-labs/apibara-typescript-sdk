@@ -29,6 +29,7 @@
     "format": "biome format . --write"
   },
   "devDependencies": {
+    "@apibara/protocol": "workspace:*",
     "@bufbuild/buf": "^1.32.1",
     "@types/long": "^5.0.0",
     "@types/node": "^20.12.12",
@@ -36,10 +37,12 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@apibara/protocol": "workspace:*",
     "long": "^5.2.1",
     "nice-grpc-common": "^2.0.2",
     "protobufjs": "^7.1.2",
     "viem": "^2.40.3"
+  },
+  "peerDependencies": {
+    "@apibara/protocol": "workspace:^"
   }
 }
