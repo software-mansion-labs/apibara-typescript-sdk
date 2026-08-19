@@ -990,7 +990,7 @@ export class StarknetRpcStream extends RpcStreamConfig<
   }
 
   /** Close the internally owned WebSocket and release pending waiters. */
-  close(): void {
+  override close(): void {
     this.websocketSignal?.close();
     this.websocketSignal = undefined;
     this.pendingLoaded = false;

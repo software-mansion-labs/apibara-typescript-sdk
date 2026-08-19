@@ -1,0 +1,7 @@
+{
+  "type": "patch",
+  "comment": "feat(starknet-rpc): expose WebSocket cleanup through RpcClient.close",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
