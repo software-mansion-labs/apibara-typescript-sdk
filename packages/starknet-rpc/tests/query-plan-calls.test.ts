@@ -275,7 +275,7 @@ describe("query-plan call counts", () => {
     ]);
   });
 
-  it("exhausts event pages without clamping the requested block range", async () => {
+  it("clamps event backfills and exhausts pages within the returned range", async () => {
     const eventQueries: Record<string, unknown>[] = [];
     const stream = configuredStream(async (_input, init) => {
       const request = JSON.parse(String(init?.body)) as {
@@ -291,7 +291,7 @@ describe("query-plan call counts", () => {
                 events: [{ block_number: 5 }],
                 continuation_token: "next-page",
               }
-            : { events: [{ block_number: 50_000 }] };
+            : { events: [{ block_number: 10_004 }] };
         return Response.json({ jsonrpc: "2.0", id: request.id, result });
       }
       const blockId = request.params[0] as { block_number: number };
@@ -310,18 +310,18 @@ describe("query-plan call counts", () => {
       filters: [{ events: [{ address: "0xabc", keys: ["0x1"] }] }],
     });
 
-    expect(result.endBlock).toBe(50_000n);
+    expect(result.endBlock).toBe(10_004n);
     expect(eventQueries).toEqual([
       {
         from_block: { block_number: 5 },
-        to_block: { block_number: 50_000 },
+        to_block: { block_number: 10_004 },
         chunk_size: 1_000,
         address: "0xabc",
         keys: [["0x1"]],
       },
       {
         from_block: { block_number: 5 },
-        to_block: { block_number: 50_000 },
+        to_block: { block_number: 10_004 },
         chunk_size: 1_000,
         continuation_token: "next-page",
         address: "0xabc",
@@ -569,13 +569,22 @@ describe("query-plan call counts", () => {
       },
     );
 
-    await stream.fetchBlockRangeMany({
+    const first = await stream.fetchBlockRangeMany({
       startBlock: 0n,
       maxBlock: 9n,
       force: false,
       clampAllowed: true,
       filters: [{ events: [{}] }],
     });
+    const second = await stream.fetchBlockRangeMany({
+      startBlock: first.endBlock + 1n,
+      maxBlock: 9n,
+      force: false,
+      clampAllowed: true,
+      filters: [{ events: [{}] }],
+    });
+    expect(first.endBlock).toBe(2n);
+    expect(second.endBlock).toBe(5n);
     expect(eventQueries).toEqual([
       expect.objectContaining({
         from_block: { block_number: 0 },
@@ -585,16 +594,6 @@ describe("query-plan call counts", () => {
       expect.objectContaining({
         from_block: { block_number: 3 },
         to_block: { block_number: 5 },
-        chunk_size: 17,
-      }),
-      expect.objectContaining({
-        from_block: { block_number: 6 },
-        to_block: { block_number: 8 },
-        chunk_size: 17,
-      }),
-      expect.objectContaining({
-        from_block: { block_number: 9 },
-        to_block: { block_number: 9 },
         chunk_size: 17,
       }),
     ]);
