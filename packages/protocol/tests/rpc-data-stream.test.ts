@@ -251,6 +251,19 @@ class ForkAfterProcessedBlockConfig extends RpcStreamConfig<string, TestBlock> {
 }
 
 describe("RpcDataStream", () => {
+  it("closes resources owned by the stream config", () => {
+    const config = new MultiFilterConfig();
+    let closeCalls = 0;
+    config.close = () => {
+      closeCalls++;
+    };
+
+    const client = new RpcClient(config);
+    client.close();
+
+    expect(closeCalls).toBe(1);
+  });
+
   it("bounds network fetches by the ending cursor", async () => {
     const config = new MultiFilterConfig();
     config.headBlock = 100n;

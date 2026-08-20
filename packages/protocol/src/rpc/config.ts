@@ -114,6 +114,9 @@ export type ValidateFilterResult =
     };
 
 export abstract class RpcStreamConfig<TFilter, TBlock> {
+  /** Release resources owned by this stream config. */
+  close(): void {}
+
   abstract headRefreshIntervalMs(): number;
   abstract finalizedRefreshIntervalMs(): number;
 

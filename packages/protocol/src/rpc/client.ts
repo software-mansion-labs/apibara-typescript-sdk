@@ -9,6 +9,11 @@ import { blockInfoToCursor } from "./helpers";
 export class RpcClient<TFilter, TBlock> implements Client<TFilter, TBlock> {
   constructor(private config: RpcStreamConfig<TFilter, TBlock>) {}
 
+  /** Release resources owned by the underlying stream config. */
+  close(): void {
+    this.config.close();
+  }
+
   async status(
     _request?: StatusRequest,
     _options?: ClientCallOptions,
