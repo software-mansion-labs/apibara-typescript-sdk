@@ -1,0 +1,7 @@
+{
+  "type": "patch",
+  "comment": "perf(starknet-rpc): emit progress from bounded event backfill ranges",
+  "packageName": "@apibara/starknet-rpc",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}

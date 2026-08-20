@@ -98,6 +98,7 @@ const rangeHistogram = meter.createHistogram(
 const DEFAULT_CACHE_SIZE = 128;
 const DEFAULT_BLOCK_RANGE_SIZE = 20;
 const DEFAULT_EVENT_PAGE_SIZE = 1_000;
+const DEFAULT_EVENT_RANGE_SIZE = 10_000n;
 
 type CachedStateUpdate = {
   addressKey: string;
@@ -364,6 +365,8 @@ export class StarknetRpcStream extends RpcStreamConfig<
     const rangeSize = BigInt(this.blockRangeSize());
     if (requiresBlockScan || plan.headerRequirement === "always") {
       endBlock = min(maxBlock, startBlock + rangeSize - 1n);
+    } else if (plan.fetchEvents && clampAllowed) {
+      endBlock = min(maxBlock, startBlock + this.eventRangeSize() - 1n);
     } else if (!plan.fetchEvents && endBlock - startBlock >= rangeSize) {
       endBlock = startBlock + rangeSize - 1n;
     }
@@ -667,14 +670,9 @@ export class StarknetRpcStream extends RpcStreamConfig<
     }).build();
     const blocks = new Set<bigint>();
     for (const discoveryQuery of discoveryQueries) {
-      const rangeSize = this.options.eventRangeSize;
-      for (
-        let rangeStart = start;
-        rangeStart <= end;
-        rangeStart = rangeSize === undefined ? end + 1n : rangeStart + rangeSize
-      ) {
-        const rangeEnd =
-          rangeSize === undefined ? end : min(end, rangeStart + rangeSize - 1n);
+      const rangeSize = this.eventRangeSize();
+      for (let rangeStart = start; rangeStart <= end; rangeStart += rangeSize) {
+        const rangeEnd = min(end, rangeStart + rangeSize - 1n);
         let token: string | undefined;
         do {
           const query: Record<string, unknown> = {
@@ -954,6 +952,10 @@ export class StarknetRpcStream extends RpcStreamConfig<
 
   private eventPageSize(): number {
     return this.options.eventPageSize ?? DEFAULT_EVENT_PAGE_SIZE;
+  }
+
+  private eventRangeSize(): bigint {
+    return this.options.eventRangeSize ?? DEFAULT_EVENT_RANGE_SIZE;
   }
 
   private async request<T>(
