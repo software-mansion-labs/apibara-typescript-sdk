@@ -28,7 +28,7 @@ import {
   StarknetRpcError,
   UnsupportedStarknetRpcVersionError,
 } from "./errors";
-import { normalizeFelt } from "./felt";
+import { EventDiscoveryQueryBuilder } from "./event-discovery-query";
 import type { FetchPlan } from "./fetch-plan";
 import { FilterSet } from "./filter";
 import { StarknetRpcCapabilities, parseSpecVersion } from "./rpc-capabilities";
@@ -661,24 +661,12 @@ export class StarknetRpcStream extends RpcStreamConfig<
       ((this.options.mergeEventFilters ?? "accepted") === "always" ||
         ((this.options.mergeEventFilters ?? "accepted") === "accepted" &&
           !acceptedRange));
-    const addresses = [
-      ...new Set(
-        eventFilters.map((filter) =>
-          filter.address ? normalizeFelt(filter.address) : undefined,
-        ),
-      ),
-    ];
-    const definedAddresses = addresses.filter(
-      (address): address is `0x${string}` => address !== undefined,
-    );
-    const hasWildcard = addresses.includes(undefined);
-    const groups: (string | undefined)[][] = hasWildcard
-      ? [[undefined]]
-      : shouldMerge
-        ? [definedAddresses]
-        : addresses.map((address) => [address]);
+    const discoveryQueries = new EventDiscoveryQueryBuilder({
+      filters: eventFilters,
+      mergeAddresses: shouldMerge,
+    }).build();
     const blocks = new Set<bigint>();
-    for (const group of groups) {
+    for (const discoveryQuery of discoveryQueries) {
       const rangeSize = this.options.eventRangeSize;
       for (
         let rangeStart = start;
@@ -694,12 +682,8 @@ export class StarknetRpcStream extends RpcStreamConfig<
             to_block: { block_number: Number(rangeEnd) },
             chunk_size: this.eventPageSize(),
             continuation_token: token,
+            ...discoveryQuery,
           };
-          const defined = group.filter(
-            (address): address is string => address !== undefined,
-          );
-          if (defined.length === 1) query.address = defined[0];
-          if (defined.length > 1) query.address = defined;
           const page = await this.request<RpcEventPage>("starknet_getEvents", [
             query,
           ]);
