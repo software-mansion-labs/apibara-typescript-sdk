@@ -1,0 +1,7 @@
+{
+  "type": "patch",
+  "comment": "fix(protocol): report incompatible RPC stream versions at client construction",
+  "packageName": "@apibara/protocol",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}

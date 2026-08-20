@@ -1,0 +1,7 @@
+{
+  "type": "patch",
+  "comment": "fix(evm): share the application protocol runtime",
+  "packageName": "@apibara/evm",
+  "email": "tomekgsd@gmail.com",
+  "dependentChangeType": "patch"
+}
